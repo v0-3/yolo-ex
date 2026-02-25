@@ -6,55 +6,54 @@
 
 | Technology | Version | Purpose |
 | ---------- | ------- | ------- |
-| Python | `>=3.10,<3.11` | Application runtime target |
-| `uv` | tool-managed (not pinned in repo) | Dependency management / virtualenv workflow |
-| `uv_build` | `>=0.10.5,<0.11.0` | Build backend |
-| `argparse` (stdlib) | Python stdlib | CLI parsing |
-| `importlib` / `importlib.metadata` (stdlib) | Python stdlib | Dynamic imports + installed package version checks |
+| Python | `>=3.10,<3.11` | Application runtime for CLI tools |
+| uv | user-managed | Environment/dependency manager and command runner (`uv sync`, `uv run`) |
+| Ultralytics | `8.4.14` | YOLO model loading/export backend |
+| NumPy | `1.26.4` | Runtime dependency required by Ultralytics/export workflows |
 
 ## Production Dependencies
 
 | Package | Version | Purpose |
 | ------- | ------- | ------- |
-| `ultralytics` | `8.4.14` | YOLO export backend and model loading |
-| `numpy` | `1.26.4` | Numerical dependency used by ML stack |
-| `ultralytics[export]` | `8.4.14` (all platforms except Linux `aarch64`) | Export extras on non-Jetson environments |
-| `coremltools` | `9.0` (`mac` group, macOS only) | CoreML export support |
-| `torch` | `2.7.0` (`mac` group, macOS only) | PyTorch runtime for macOS export path |
-| `torchvision` | `0.22.0` (`mac` group, macOS only) | TorchVision runtime for macOS export path |
-| `torch` | direct URL wheel `2.5.0a0+872d972e41.nv24.08` (`jetson` group) | Optional Jetson fallback when not using JetPack system packages |
-| `torchvision` | direct URL wheel `0.20.0a0+afc54f7` (`jetson` group) | Optional Jetson fallback package |
-| `onnxruntime-gpu` | direct URL wheel `1.23.0` (`jetson` group) | Optional Jetson ONNX Runtime GPU package |
+| `ultralytics` | `8.4.14` | Primary export backend (`YOLO.export`) |
+| `numpy` | `1.26.4` | Numeric/runtime dependency for ML/export stack |
+| `ultralytics[export]` | `8.4.14` (non-Linux aarch64 only) | Export extras on non-Jetson targets |
+| `coremltools` (group: `mac`) | `9.0` | CoreML export support on macOS |
+| `torch` (group: `mac`) | `2.7.0` | macOS export/runtime dependency |
+| `torchvision` (group: `mac`) | `0.22.0` | macOS export/runtime dependency |
+| `torch` (group: `jetson`) | `2.5.0a0+872d972e41.nv24.08` (wheel URL) | Jetson-specific PyTorch build |
+| `torchvision` (group: `jetson`) | `0.20.0a0+afc54f7` (wheel URL) | Jetson-specific torchvision build |
+| `onnxruntime-gpu` (group: `jetson`) | `1.23.0` (wheel URL) | Jetson TensorRT export dependency |
 
 ## Development Dependencies
 
 | Package | Version | Purpose |
 | ------- | ------- | ------- |
-| `pytest` | unpinned in `pyproject.toml` (resolved in `uv.lock`) | Unit test framework |
-| `mypy` | unpinned in `pyproject.toml` (resolved in `uv.lock`) | Static type checking (`strict = true`) |
-| `ruff` | unpinned in `pyproject.toml` (resolved in `uv.lock`) | Linting + import sorting |
+| `pytest` | `9.0.2` (locked in `uv.lock`) | Unit testing |
+| `ruff` | `0.15.2` (locked in `uv.lock`) | Linting and import sorting |
+| `mypy` | `1.19.1` (locked in `uv.lock`) | Static type checking (`strict = true`) |
+| `uv_build` | `>=0.10.5,<0.11.0` | Build backend declared in `pyproject.toml` |
 
 ## Infrastructure
 
 | Service | Provider | Purpose |
 | ------- | -------- | ------- |
-| Local filesystem | Host OS | Source model input and export artifact output |
-| Jetson platform runtime | NVIDIA JetPack / Linux arm64 | TensorRT engine export target environment |
-| TensorRT native runtime | NVIDIA | Required backend/runtime for `.engine` exports |
-| macOS ML environment | Apple macOS | CoreML export target environment |
+| Local filesystem | Host OS | Input `.pt` model discovery and exported artifact output paths |
+| Python package metadata | stdlib (`importlib.metadata`) | Installed package version checks in diagnostics |
+| Python import system | stdlib (`importlib`) | Optional dependency presence/import validation |
+| Platform detection | stdlib (`platform`) | Runtime target detection (`macos`, `linux_arm64`, `other`) |
+| JetPack / TensorRT Python packages (Jetson) | NVIDIA JetPack + system Python | TensorRT runtime/import support on Linux arm64 |
+| PyPI / wheel URLs (via `uv`) | PyPI + GitHub Releases (Ultralytics assets) | Dependency resolution and Jetson wheel installation sources |
 
 ## Configuration
 
-| Variable / Input | Purpose | Required |
-| ---------------- | ------- | -------- |
-| CLI args (`--format`, `model_path`, etc.) | Select export mode, runtime options, and output paths | yes |
-| `--verbose` (both CLIs) | Enables debug logging | no |
-| `uv` dependency group (`mac`, `jetson`) | Installs platform-specific optional packages | platform-dependent |
-| Environment variables | No app-specific env vars referenced in codebase | no |
+| Variable | Purpose | Required |
+| -------- | ------- | -------- |
+| None | This project currently uses CLI arguments and platform inspection instead of environment variables | No |
 
-## Tooling Configuration
+## Tooling Configuration Notes
 
-- `ruff`: target `py310`, line length `100`, lint rules `E,F,I,B,UP`
+- `ruff` target: Python `3.10`, line length `100`
 - `mypy`: `strict = true`, `warn_unused_ignores = true`
 - `pytest`: test discovery rooted at `tests/`
-- `project.scripts`: `yolo-ex`, `yolo-ex-platform`
+- Build backend: `uv_build` with source package under `src/yolo_ex`

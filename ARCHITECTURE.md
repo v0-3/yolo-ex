@@ -4,156 +4,138 @@
 
 ## Overview
 
-`yolo-ex` is a small Python `src/`-layout CLI package for exporting YOLO `.pt` models via Ultralytics to:
+`yolo-ex` is a small Python CLI package for exporting YOLO `.pt` models through the Ultralytics backend with platform-aware validation.
 
-- TensorRT `.engine` (Jetson/Linux arm64 target)
-- CoreML `.mlpackage` (macOS target)
+The project has two user-facing commands:
 
-The codebase is organized around two CLIs:
+- `yolo-ex`: validates export arguments, runs platform preflight checks, and executes (or dry-runs) model export
+- `yolo-ex-platform`: inspects the current machine/platform and reports package/version compatibility for supported export targets
 
-- `yolo-ex`: export execution (`src/yolo_ex/cli.py`)
-- `yolo-ex-platform`: platform/package validation (`src/yolo_ex/platform_cli.py`)
-
-Core responsibilities are split into request models, export backend orchestration, platform preflight checks, and a platform compatibility report generator. Tests are comprehensive and mostly unit-level with monkeypatching/mocking.
+The codebase is organized as a `src/` package with focused modules, plus a `tests/` directory with unit tests that heavily mock external imports and platform state.
 
 ## System Diagram
 
 ```text
-CLI: yolo-ex (src/yolo_ex/cli.py)
-  -> parse args (argparse)
-  -> configure logging
-  -> build ExportRequest
-  -> preflight_for_format() [platforms.py]
-  -> export_model() [exporter.py]
-       -> validate_request()
-       -> (engine only) TensorRT module compat shim
-       -> ultralytics.YOLO(...).export(...)
-  -> print result / error + exit code
-
-CLI: yolo-ex-platform (src/yolo_ex/platform_cli.py)
-  -> parse args (argparse)
-  -> configure logging
-  -> check_current_platform() [platform_check.py]
-       -> detect_platform() [platforms.py]
-       -> importlib.metadata.version(...)
-       -> import checks (torch/torchvision/coremltools/onnxruntime/tensorrt)
-  -> render_platform_report()
-  -> print report + exit code
+User CLI
+  |
+  +--> yolo-ex (src/yolo_ex/cli.py)
+  |       |
+  |       +--> models.ExportRequest / ExportFormat
+  |       +--> platforms.preflight_for_format()
+  |       |       |
+  |       |       +--> platform detection (platform module)
+  |       |       +--> import checks (importlib.import_module)
+  |       |
+  |       +--> exporter.export_model()
+  |               |
+  |               +--> validate_request()
+  |               +--> build_export_kwargs()
+  |               +--> lazy import ultralytics.YOLO
+  |               +--> model.export(...)
+  |
+  +--> yolo-ex-platform (src/yolo_ex/platform_cli.py)
+          |
+          +--> platform_check.check_current_platform()
+                  |
+                  +--> platforms.detect_platform()
+                  +--> importlib.metadata.version()
+                  +--> importlib.import_module()
+                  +--> render_platform_report()
 ```
 
 ## Components
 
-### CLI Export Entrypoint
-- **Purpose:** User-facing export command (`export` subcommand), request normalization, error-to-exit-code mapping.
+### CLI Export Command
+- **Purpose:** Main command entrypoint for `export` operations, argument parsing, logging setup, preflight warnings, and result/error reporting.
 - **Location:** `src/yolo_ex/cli.py`
-- **Dependencies:** `argparse`, `yolo_ex.models`, `yolo_ex.exporter`, `yolo_ex.platforms`, `yolo_ex.logging_utils`, `yolo_ex.errors`
-- **Dependents:** `pyproject.toml` script `yolo-ex`, `tests/test_cli.py`
+- **Dependencies:** `argparse`, `logging`, `sys`, `pathlib`, `yolo_ex.models`, `yolo_ex.platforms`, `yolo_ex.exporter`, `yolo_ex.errors`, `yolo_ex.logging_utils`
+- **Dependents:** `pyproject.toml` console script `yolo-ex`; unit tests in `tests/test_cli.py`
 
-### Export Backend Wrapper
-- **Purpose:** Validate export requests, build Ultralytics kwargs, perform dry-run handling, invoke `ultralytics.YOLO.export`, normalize output path, wrap backend exceptions.
+### Export Backend
+- **Purpose:** Validates export request fields, builds Ultralytics export kwargs, handles dry-run behavior, and executes Ultralytics export with error wrapping.
 - **Location:** `src/yolo_ex/exporter.py`
-- **Dependencies:** `json`, `importlib`, `sys`, `yolo_ex.models`, `yolo_ex.errors`, external `ultralytics`
-- **Dependents:** `src/yolo_ex/cli.py`, `src/yolo_ex/__init__.py`, `tests/test_exporter.py`
+- **Dependencies:** `importlib`, `json`, `sys`, `pathlib`, lazy `ultralytics.YOLO`, shared models/errors
+- **Dependents:** `src/yolo_ex/cli.py`, package public API (`src/yolo_ex/__init__.py`), tests in `tests/test_exporter.py`
 
-### Platform Targeting & Preflight
-- **Purpose:** Detect target platform bucket and enforce format-specific runtime module requirements before export.
+### Platform Preflight Rules
+- **Purpose:** Detects broad platform target buckets and enforces format-specific module availability before export.
 - **Location:** `src/yolo_ex/platforms.py`
-- **Dependencies:** `platform`, `importlib`, `yolo_ex.models`, `yolo_ex.errors`
-- **Dependents:** `src/yolo_ex/cli.py`, `src/yolo_ex/platform_check.py`, `tests/test_platforms.py`, `tests/test_cli.py`
+- **Dependencies:** `platform`, `importlib`, dataclasses/enums, `yolo_ex.errors`, `yolo_ex.models`
+- **Dependents:** `src/yolo_ex/cli.py`, `src/yolo_ex/platform_check.py`, tests in `tests/test_platforms.py`
 
-### Platform Check Engine
-- **Purpose:** Validate current environment package metadata/importability for macOS and Jetson targets; render human-readable setup report.
+### Platform Diagnostics / Version Checks
+- **Purpose:** Produces a detailed compatibility report for supported targets (macOS and Linux arm64/Jetson), including package presence/import checks and expected versions.
 - **Location:** `src/yolo_ex/platform_check.py`
-- **Dependencies:** `importlib`, `importlib.metadata`, `warnings`, `logging`, `platform`, `yolo_ex.platforms`
-- **Dependents:** `src/yolo_ex/platform_cli.py`, `tests/test_platform_check.py`, `tests/test_platform_cli.py`
+- **Dependencies:** `importlib`, `importlib.metadata`, `platform`, `logging`, `warnings`, `packaging.version` (optional at runtime), `yolo_ex.platforms`
+- **Dependents:** `src/yolo_ex/platform_cli.py`, tests in `tests/test_platform_check.py`
 
-### Platform Check CLI Entrypoint
-- **Purpose:** Run platform validation and expose status via stdout + process exit code.
+### Platform Check CLI
+- **Purpose:** CLI wrapper for running `check_current_platform()` and converting report status to exit codes.
 - **Location:** `src/yolo_ex/platform_cli.py`
-- **Dependencies:** `argparse`, `yolo_ex.platform_check`, `yolo_ex.logging_utils`
-- **Dependents:** `pyproject.toml` script `yolo-ex-platform`, `tests/test_platform_cli.py`
+- **Dependencies:** `argparse`, `yolo_ex.logging_utils`, `yolo_ex.platform_check`
+- **Dependents:** `pyproject.toml` console script `yolo-ex-platform`; tests in `tests/test_platform_cli.py`
 
-### Domain Models
-- **Purpose:** Typed request/response structures and export format enum.
-- **Location:** `src/yolo_ex/models.py`
-- **Dependencies:** `dataclasses`, `enum`, `pathlib`
-- **Dependents:** `src/yolo_ex/cli.py`, `src/yolo_ex/exporter.py`, `src/yolo_ex/platforms.py`, tests
-
-### Errors
-- **Purpose:** Small exception hierarchy for validation vs execution failures.
-- **Location:** `src/yolo_ex/errors.py`
-- **Dependencies:** stdlib only
-- **Dependents:** `src/yolo_ex/cli.py`, `src/yolo_ex/exporter.py`, `src/yolo_ex/platforms.py`, `src/yolo_ex/__init__.py`, tests
+### Shared Models and Errors
+- **Purpose:** Defines core enums/dataclasses (`ExportFormat`, `ExportRequest`, `ExportResult`) and exception hierarchy for CLI/backend coordination.
+- **Location:** `src/yolo_ex/models.py`, `src/yolo_ex/errors.py`
+- **Dependencies:** stdlib `dataclasses`, `enum`, `pathlib`
+- **Dependents:** Most application modules and tests
 
 ### Logging Utilities
-- **Purpose:** Shared CLI logging configuration.
+- **Purpose:** Centralized CLI logging configuration (`INFO`/`DEBUG`).
 - **Location:** `src/yolo_ex/logging_utils.py`
-- **Dependencies:** `logging`
+- **Dependencies:** stdlib `logging`
 - **Dependents:** `src/yolo_ex/cli.py`, `src/yolo_ex/platform_cli.py`
 
-### Public Package API
-- **Purpose:** Re-export stable package API for library-style imports.
-- **Location:** `src/yolo_ex/__init__.py`
-- **Dependencies:** `yolo_ex.errors`, `yolo_ex.exporter`, `yolo_ex.models`
-- **Dependents:** External consumers (potential), package import surface
-
 ### Tests
-- **Purpose:** Unit coverage for CLIs, exporter behavior, platform preflight, and platform report rendering.
+- **Purpose:** Unit coverage for CLI parsing/exit codes, exporter validation/execution behavior, platform detection, and platform diagnostics rendering/check logic.
 - **Location:** `tests/`
-- **Dependencies:** `pytest`, monkeypatch/capsys fixtures
-- **Dependents:** CI/local test runs (`uv run pytest`)
-
-### Model Artifacts (Repo Assets)
-- **Purpose:** Sample/exported YOLO assets for local experimentation and validation (`.pt`, `.onnx`, `.engine`).
-- **Location:** `models/`
-- **Dependencies:** N/A (binary assets)
-- **Dependents:** Manual runs, CLI demos, local validation workflows
+- **Dependencies:** `pytest`, `monkeypatch`, temp paths, stdlib test helpers
+- **Dependents:** Developer workflow (`uv run pytest`)
 
 ## Data Flow
 
-### Export Flow (`yolo-ex`)
-1. CLI parses user input into `argparse.Namespace`.
-2. `_request_from_args()` builds a typed `ExportRequest`.
-3. `preflight_for_format()` checks platform and required Python modules for selected format.
-4. `export_model()` validates file/parameter semantics and assembles Ultralytics kwargs.
-5. For TensorRT exports, exporter applies a Jetson compatibility shim (`tensorrt_bindings` -> `tensorrt`) if needed.
-6. Ultralytics performs the actual export.
-7. CLI prints success/dry-run details or validation/execution errors and returns exit code (`0`, `1`, or `2`).
+Export command (`yolo-ex export ...`):
 
-### Platform Check Flow (`yolo-ex-platform`)
-1. CLI triggers `check_current_platform()`.
-2. Platform bucket is detected (`macos`, `linux_arm64`, `other`).
-3. Package metadata and import checks run against platform-specific baselines.
-4. `render_platform_report()` formats a user-facing report and injects Jetson guidance on failure.
-5. CLI exits with `0` (all checks OK), `1` (supported but failed checks), or `2` (unsupported platform).
+1. CLI parses args into an `ExportRequest`.
+2. Logging is configured based on `--verbose`.
+3. Format-specific preflight runs (`preflight_for_format`) and emits warnings to stderr.
+4. Export backend validates request fields and builds Ultralytics kwargs.
+5. If `--dry-run`, the backend returns an `ExportResult` with serialized kwargs only.
+6. Otherwise, the Ultralytics `YOLO` class is loaded lazily and `model.export(...)` is executed.
+7. Backend normalizes the returned export path and wraps failures in `ExportExecutionError`.
+8. CLI prints success/error text and returns a process exit code.
+
+Platform diagnostics (`yolo-ex-platform`):
+
+1. CLI runs `check_current_platform()`.
+2. Platform target is detected (`macos`, `linux_arm64`, or `other`).
+3. Package/version/import checks are executed for the relevant target.
+4. A text report is rendered and printed.
+5. Exit code reflects unsupported/failed/ok status.
 
 ## Integration Points
 
-| External Service / Dependency | Type | Purpose |
-|-------------------------------|------|---------|
-| Ultralytics (`ultralytics.YOLO`) | Python library / ML backend | Performs actual model export execution |
-| TensorRT (`tensorrt`) | Python package + native runtime | Required for Jetson TensorRT engine export and validation |
-| `tensorrt_bindings` | Python package variant | Jetson compatibility fallback aliased to `tensorrt` during export |
-| CoreMLTools (`coremltools`) | Python library | Required for CoreML export preflight and platform checks |
-| PyTorch / TorchVision | Python libraries | Runtime dependencies for export/preflight/platform validation |
-| ONNX Runtime GPU (`onnxruntime-gpu`) | Python library | Jetson platform validation target (`onnxruntime` import) |
-| `importlib.metadata` | Stdlib metadata API | Reads installed package versions for platform report |
-| Local filesystem | OS/filesystem | Reads source `.pt` models and writes exported artifacts |
-| Host platform (`platform.system/machine`) | OS API | Detects macOS vs Linux arm64 vs unsupported |
+| External Service / System | Type | Purpose |
+|---------------------------|------|---------|
+| Ultralytics (`ultralytics.YOLO`) | Python library API | Performs the actual model export |
+| Local filesystem (`Path`) | File I/O | Validates source `.pt` model presence and returns output artifact paths |
+| Python import system (`importlib`) | Runtime module loading | Preflight/import checks and lazy backend imports |
+| Python package metadata (`importlib.metadata`) | Local package metadata | Platform diagnostics version checks |
+| OS/platform metadata (`platform`) | System introspection | Detect supported target buckets |
+| JetPack/system Python packages (Jetson) | Host runtime dependency | TensorRT and related imports on Linux arm64 |
 
 ## Conventions
 
-- **Project Layout:** `src/` layout (`src/yolo_ex`) with tests in `tests/` and sample artifacts in `models/`.
-- **Entrypoints:** Each CLI module exposes `build_parser()` and `main(argv: Sequence[str] | None) -> int`.
-- **Typing:** Strong type hints throughout; `mypy` strict mode is enabled in `pyproject.toml`.
-- **Modeling:** Uses `Enum` + `@dataclass(slots=True)` for request/result/report structures.
-- **Error Handling:** Domain-specific exceptions (`ExportValidationError`, `ExportExecutionError`) map to distinct CLI exit codes.
-- **Side Effects:** Print-based CLI output; heavy imports deferred (e.g., `ultralytics` import inside helper).
-- **Testing:** Pytest unit tests with monkeypatching and fixtures; high branch coverage emphasis around platform/runtime edge cases.
-- **Packaging:** `uv`/`uv_build` workflow, optional dependency groups for `mac` and `jetson`.
+- **Naming:** Snake_case modules/functions, enum-based format/platform constants, dataclass-based request/result DTOs.
+- **Structure:** Thin CLI modules orchestrate shared logic; domain logic lives in `exporter.py`, `platforms.py`, and `platform_check.py`.
+- **Error handling:** Custom exceptions (`ExportValidationError`, `ExportExecutionError`) bubble to CLI for stable exit codes/messages.
+- **Dependency loading:** Heavy/optional dependencies (e.g., `ultralytics`) are imported lazily to keep dry-run/tests lightweight.
+- **Testing:** Pytest unit tests with extensive `monkeypatch` usage to isolate platform/import behavior and avoid real exports.
 
 ## Technical Debt
 
-- [ ] `src/yolo_ex/platform_check.py` is the largest module (~394 lines) and mixes detection, validation, formatting, and import/version helpers; splitting could reduce maintenance risk.
-- [ ] Test coverage is strong at the unit level, but there are no integration/e2e tests that exercise real `ultralytics`, TensorRT, or CoreMLTools environments.
-- [ ] `platform_check._versions_match()` relies on `packaging` when available (transitively); the project does not declare `packaging` directly.
+- [ ] `src/yolo_ex/platform_check.py` duplicates expected version constants that also exist in `pyproject.toml` dependency groups, creating drift risk.
+- [ ] `tests/` focuses on unit tests/mocking; no integration test verifies a real Ultralytics export or actual platform package imports.
+- [ ] `models/` contains large binary model/export artifacts committed to the repo, which increases clone size and churn.
+- [ ] Platform support is intentionally narrow (macOS + Linux arm64/Jetson); unsupported targets return diagnostics but may surprise users expecting broader compatibility.
