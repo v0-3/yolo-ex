@@ -3,7 +3,7 @@ name = "yolo-ex"
 version = "0.1.0"
 description = "yolo model export tool"
 readme = "README.md"
-authors = [{ name = "Luis" }]
+authors = [{ name = "Luis Maya Aranda", email = "nonfatmatcha@gmail.com" }]
 requires-python = ">=3.10,<3.11"
 dependencies = [
     "ultralytics==8.4.14",
