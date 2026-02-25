@@ -50,8 +50,58 @@ def test_engine_preflight_missing_dependency_message(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(platforms.importlib, "import_module", fake_import)
 
-    with pytest.raises(ExportValidationError, match="tensorrt-cu12-bindings==10.7.0.post1"):
+    with pytest.raises(ExportValidationError, match="system-site-packages"):
         preflight_for_format(ExportFormat.ENGINE)
+
+
+def test_engine_preflight_requires_tensorrt_not_tensorrt_bindings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(platforms.py_platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platforms.py_platform, "machine", lambda: "aarch64")
+
+    def fake_import(name: str) -> SimpleNamespace:
+        if name == "tensorrt":
+            raise ModuleNotFoundError(name)
+        if name == "tensorrt_bindings":
+            return SimpleNamespace()
+        raise AssertionError(f"unexpected import {name}")
+
+    monkeypatch.setattr(platforms.importlib, "import_module", fake_import)
+
+    with pytest.raises(ExportValidationError, match="tensorrt"):
+        preflight_for_format(ExportFormat.ENGINE)
+
+
+@pytest.mark.parametrize("missing_module", ["torch", "torchvision", "onnxruntime"])
+def test_engine_preflight_requires_jetson_runtime_modules(
+    monkeypatch: pytest.MonkeyPatch,
+    missing_module: str,
+) -> None:
+    monkeypatch.setattr(platforms.py_platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platforms.py_platform, "machine", lambda: "aarch64")
+
+    def fake_import(name: str) -> SimpleNamespace:
+        if name == missing_module:
+            raise ModuleNotFoundError(name)
+        return SimpleNamespace()
+
+    monkeypatch.setattr(platforms.importlib, "import_module", fake_import)
+
+    with pytest.raises(ExportValidationError, match=missing_module):
+        preflight_for_format(ExportFormat.ENGINE)
+
+
+def test_engine_preflight_requires_jetson_runtime_modules_happy_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(platforms.py_platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platforms.py_platform, "machine", lambda: "aarch64")
+    monkeypatch.setattr(platforms.importlib, "import_module", lambda name: SimpleNamespace())
+
+    result = preflight_for_format(ExportFormat.ENGINE)
+    assert result.target is PlatformTarget.LINUX_ARM64
+    assert result.warnings == []
 
 
 def test_engine_preflight_warns_on_non_jetson(

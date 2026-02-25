@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -131,3 +133,89 @@ def test_export_model_returns_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     request = ExportRequest(model_path=_pt_file(tmp_path), format=ExportFormat.ENGINE)
     result = export_model(request)
     assert result.output_path == output
+
+
+def test_export_model_engine_calls_tensorrt_compat(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    called = False
+
+    class FakeYolo:
+        def __init__(self, model_path: str) -> None:
+            self.model_path = model_path
+
+        def export(self, **kwargs: object) -> str:
+            return str(tmp_path / "model.engine")
+
+    def fake_compat() -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(exporter, "_ensure_tensorrt_module_compat", fake_compat)
+    monkeypatch.setattr(exporter, "_load_yolo_class", lambda: FakeYolo)
+
+    request = ExportRequest(model_path=_pt_file(tmp_path), format=ExportFormat.ENGINE)
+    export_model(request)
+
+    assert called is True
+
+
+def test_export_model_coreml_skips_tensorrt_compat(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class FakeYolo:
+        def __init__(self, model_path: str) -> None:
+            self.model_path = model_path
+
+        def export(self, **kwargs: object) -> str:
+            return str(tmp_path / "model.mlpackage")
+
+    def fail_compat() -> None:
+        raise AssertionError("TensorRT compat shim should not run for CoreML exports")
+
+    monkeypatch.setattr(exporter, "_ensure_tensorrt_module_compat", fail_compat)
+    monkeypatch.setattr(exporter, "_load_yolo_class", lambda: FakeYolo)
+
+    request = ExportRequest(model_path=_pt_file(tmp_path), format=ExportFormat.COREML)
+    result = export_model(request)
+
+    assert result.output_path == tmp_path / "model.mlpackage"
+
+
+def test_ensure_tensorrt_module_compat_aliases_tensorrt_bindings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_module = ModuleType("tensorrt_bindings")
+
+    def fake_import(name: str) -> object:
+        if name == "tensorrt":
+            raise ModuleNotFoundError(name)
+        if name == "tensorrt_bindings":
+            return fake_module
+        raise AssertionError(f"unexpected import {name}")
+
+    monkeypatch.delitem(exporter.sys.modules, "tensorrt", raising=False)
+    monkeypatch.setattr(exporter.importlib, "import_module", fake_import)
+
+    exporter._ensure_tensorrt_module_compat()
+
+    assert exporter.sys.modules["tensorrt"] is fake_module
+
+
+def test_ensure_tensorrt_module_compat_noop_when_tensorrt_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_module = ModuleType("tensorrt")
+    calls: list[str] = []
+
+    def fake_import(name: str) -> object:
+        calls.append(name)
+        if name == "tensorrt":
+            return fake_module
+        raise AssertionError(f"unexpected import {name}")
+
+    monkeypatch.setattr(exporter.importlib, "import_module", fake_import)
+
+    exporter._ensure_tensorrt_module_compat()
+
+    assert calls == ["tensorrt"]

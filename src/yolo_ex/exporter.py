@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +25,9 @@ def export_model(request: ExportRequest) -> ExportResult:
             backend="ultralytics",
             details={"dry_run": "true", "kwargs": json.dumps(export_kwargs, sort_keys=True)},
         )
+
+    if request.format is ExportFormat.ENGINE:
+        _ensure_tensorrt_module_compat()
 
     yolo_cls = _load_yolo_class()
 
@@ -90,6 +95,22 @@ def _load_yolo_class() -> Any:
     from ultralytics import YOLO  # type: ignore[attr-defined]
 
     return YOLO
+
+
+def _ensure_tensorrt_module_compat() -> None:
+    """Alias ``tensorrt_bindings`` to ``tensorrt`` when Jetson bindings omit the canonical module."""
+    try:
+        importlib.import_module("tensorrt")
+        return
+    except ImportError:
+        pass
+
+    try:
+        tensorrt_bindings = importlib.import_module("tensorrt_bindings")
+    except ImportError:
+        return
+
+    sys.modules.setdefault("tensorrt", tensorrt_bindings)
 
 
 def _normalize_output_path(exported: object) -> Path | None:

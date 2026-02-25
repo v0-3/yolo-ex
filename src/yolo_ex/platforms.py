@@ -51,7 +51,7 @@ def preflight_for_format(export_format: ExportFormat) -> PreflightResult:
             )
         _require_module(
             "coremltools",
-            "CoreML export requires `coremltools`. Install on macOS with `uv sync`.",
+            "CoreML export requires `coremltools`. Install on macOS with `uv sync --group mac`.",
         )
     elif export_format is ExportFormat.ENGINE:
         if target is not PlatformTarget.LINUX_ARM64:
@@ -61,9 +61,30 @@ def preflight_for_format(export_format: ExportFormat) -> PreflightResult:
             )
         _require_module(
             "tensorrt",
-            "TensorRT export requires `tensorrt-cu12-bindings==10.7.0.post1` from NVIDIA PyPI "
-            "(https://pypi.nvidia.com) and a compatible JetPack/TensorRT runtime.",
+            "TensorRT export requires the Jetson TensorRT Python package (`tensorrt`) and a "
+            "compatible JetPack/TensorRT runtime. If JetPack provides system Python packages, "
+            "create the project venv with `uv venv --python /usr/bin/python3 "
+            "--system-site-packages` before `uv sync`.",
         )
+        if target is PlatformTarget.LINUX_ARM64:
+            _require_module(
+                "torch",
+                "TensorRT export on Jetson requires `torch`. If JetPack provides system Python "
+                "packages, create the project venv with `uv venv --python /usr/bin/python3 "
+                "--system-site-packages` before `uv sync`.",
+            )
+            _require_module(
+                "torchvision",
+                "TensorRT export on Jetson requires `torchvision`. If JetPack provides system "
+                "Python packages, create the project venv with `uv venv --python /usr/bin/python3 "
+                "--system-site-packages` before `uv sync`.",
+            )
+            _require_module(
+                "onnxruntime",
+                "TensorRT export on Jetson requires `onnxruntime`. If JetPack provides system "
+                "Python packages, create the project venv with `uv venv --python /usr/bin/python3 "
+                "--system-site-packages` before `uv sync`.",
+            )
 
     return PreflightResult(target=target, warnings=warnings)
 
