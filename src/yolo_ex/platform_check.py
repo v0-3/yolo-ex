@@ -15,6 +15,7 @@ from yolo_ex.platforms import PlatformTarget, detect_platform
 ULTRALYTICS_VERSION = "8.4.14"
 MACOS_TORCH_VERSION = "2.7.0"
 MACOS_TORCHVISION_VERSION = "0.22.0"
+MACOS_COREMLTOOLS_VERSION = "9.0"
 JETSON_TORCH_VERSION = "2.5.0a0+872d972e41.nv24.08"
 JETSON_TORCHVISION_VERSION = "0.20.0a0+afc54f7"
 JETSON_ONNXRUNTIME_GPU_VERSION = "1.23.0"
@@ -93,7 +94,12 @@ def check_current_platform() -> PlatformCheckReport:
                     "torchvision",
                     MACOS_TORCHVISION_VERSION,
                 ),
-                _check_presence_and_import("coremltools", "coremltools", "coremltools"),
+                _check_presence_and_import_with_validated_version(
+                    "coremltools",
+                    "coremltools",
+                    "coremltools",
+                    MACOS_COREMLTOOLS_VERSION,
+                ),
             ]
         )
     elif target is PlatformTarget.LINUX_ARM64:

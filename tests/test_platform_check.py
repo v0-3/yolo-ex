@@ -46,6 +46,11 @@ def test_check_current_platform_macos_happy_path(monkeypatch: pytest.MonkeyPatch
     assert report.ok is True
     assert report.platform_target is PlatformTarget.MACOS
     assert all(check.status is PackageCheckStatus.OK for check in report.checks)
+    coreml_check = next(check for check in report.checks if check.label == "coremltools")
+    assert coreml_check.expected_version == "9.0"
+    assert coreml_check.installed_version == "9.0"
+    rendered = render_platform_report(report)
+    assert "[OK] coremltools expected=9.0 installed=9.0" in rendered
 
 
 def test_check_current_platform_macos_missing_coremltools(
@@ -349,6 +354,34 @@ def test_check_current_platform_macos_torch_version_mismatch_is_allowed(
     assert torch_check.expected_version == "2.7.0"
     assert torch_check.installed_version == "2.9.0"
     assert torch_check.message == ""
+
+
+def test_check_current_platform_macos_coremltools_version_mismatch_is_allowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_platform(
+        monkeypatch,
+        target=PlatformTarget.MACOS,
+        system="Darwin",
+        machine="arm64",
+    )
+    versions = {
+        "ultralytics": "8.4.14",
+        "torch": "2.7.0",
+        "torchvision": "0.22.0",
+        "coremltools": "9.1",
+    }
+    monkeypatch.setattr(platform_check.importlib_metadata, "version", lambda name: versions[name])
+    monkeypatch.setattr(platform_check.importlib, "import_module", lambda name: object())
+
+    report = check_current_platform()
+
+    coreml_check = next(check for check in report.checks if check.label == "coremltools")
+    assert report.ok is True
+    assert coreml_check.status is PackageCheckStatus.OK
+    assert coreml_check.expected_version == "9.0"
+    assert coreml_check.installed_version == "9.1"
+    assert coreml_check.message == ""
 
 
 def test_check_current_platform_macos_missing_torch_import(

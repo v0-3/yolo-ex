@@ -5,11 +5,7 @@ description = "yolo model export tool"
 readme = "README.md"
 authors = [{ name = "Luis Maya Aranda", email = "nonfatmatcha@gmail.com" }]
 requires-python = ">=3.10,<3.11"
-dependencies = [
-    "ultralytics==8.4.14",
-    "numpy==1.26.4",
-    "ultralytics[export]==8.4.14 ; platform_machine != 'aarch64' or sys_platform != 'linux'",
-]
+dependencies = ["ultralytics==8.4.14", "numpy==1.26.4"]
 
 [project.scripts]
 yolo-ex = "yolo_ex.cli:main"
@@ -17,16 +13,15 @@ yolo-ex-platform = "yolo_ex.platform_cli:main"
 
 [dependency-groups]
 dev = ["mypy", "pytest", "ruff"]
-mac = [
-    "coremltools==9.0; sys_platform == 'darwin'",
-    "torch==2.7.0; sys_platform == 'darwin'",
-    "torchvision==0.22.0; sys_platform == 'darwin'",
-]
+mac = ["coremltools==9.0", "torch==2.7.0", "torchvision==0.22.0"]
 jetson = [
     "torch @ https://github.com/ultralytics/assets/releases/download/v0.0.0/torch-2.5.0a0+872d972e41.nv24.08-cp310-cp310-linux_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64'",
     "torchvision @ https://github.com/ultralytics/assets/releases/download/v0.0.0/torchvision-0.20.0a0+afc54f7-cp310-cp310-linux_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64'",
     "onnxruntime-gpu @ https://github.com/ultralytics/assets/releases/download/v0.0.0/onnxruntime_gpu-1.23.0-cp310-cp310-linux_aarch64.whl ; platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
+
+[tool.uv]
+conflicts = [[{ group = "mac" }, { group = "jetson" }]]
 
 [tool.uv.build-backend]
 module-name = "yolo_ex"
