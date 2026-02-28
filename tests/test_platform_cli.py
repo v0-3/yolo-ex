@@ -20,7 +20,7 @@ def test_platform_cli_returns_zero_on_success(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         platform_cli,
         "check_current_platform",
-        lambda: _report(target=PlatformTarget.MACOS, supported=True, ok=True),
+        lambda: _report(target=PlatformTarget.JETSON, supported=True, ok=True),
     )
     monkeypatch.setattr(platform_cli, "render_platform_report", lambda report: "ok report")
 
@@ -35,7 +35,7 @@ def test_platform_cli_returns_one_on_failed_checks(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         platform_cli,
         "check_current_platform",
-        lambda: _report(target=PlatformTarget.MACOS, supported=True, ok=False),
+        lambda: _report(target=PlatformTarget.JETSON, supported=True, ok=False),
     )
     monkeypatch.setattr(platform_cli, "render_platform_report", lambda report: "bad report")
 

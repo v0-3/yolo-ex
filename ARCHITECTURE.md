@@ -9,7 +9,7 @@
 The project has two user-facing commands:
 
 - `yolo-ex`: validates export arguments, runs platform preflight checks, and executes (or dry-runs) model export
-- `yolo-ex-platform`: inspects the current machine/platform and reports package/version compatibility for supported export targets
+- `yolo-ex-platform`: inspects the current machine/platform and reports package/version compatibility for the Jetson target
 
 The codebase is organized as a `src/` package with focused modules, plus a `tests/` directory with unit tests that heavily mock external imports and platform state.
 
@@ -64,9 +64,9 @@ User CLI
 - **Dependents:** `src/yolo_ex/cli.py`, `src/yolo_ex/platform_check.py`, tests in `tests/test_platforms.py`
 
 ### Platform Diagnostics / Version Checks
-- **Purpose:** Produces a detailed compatibility report for supported targets (macOS and Linux arm64/Jetson), including package presence/import checks and expected versions.
+- **Purpose:** Produces a detailed compatibility report for Jetson (Linux arm64), including package presence/import checks and expected versions.
 - **Location:** `src/yolo_ex/platform_check.py`
-- **Dependencies:** `importlib`, `importlib.metadata`, `platform`, `logging`, `warnings`, `packaging.version` (optional at runtime), `yolo_ex.platforms`
+- **Dependencies:** `importlib`, `importlib.metadata`, `platform`, `packaging.version` (optional at runtime), `yolo_ex.platforms`
 - **Dependents:** `src/yolo_ex/platform_cli.py`, tests in `tests/test_platform_check.py`
 
 ### Platform Check CLI
@@ -99,7 +99,7 @@ Export command (`yolo-ex export ...`):
 
 1. CLI parses args into an `ExportRequest`.
 2. Logging is configured based on `--verbose`.
-3. Format-specific preflight runs (`preflight_for_format`) and emits warnings to stderr.
+3. Jetson preflight runs (`preflight_for_format`) to enforce platform/runtime requirements.
 4. Export backend validates request fields and builds Ultralytics kwargs.
 5. If `--dry-run`, the backend returns an `ExportResult` with serialized kwargs only.
 6. Otherwise, the Ultralytics `YOLO` class is loaded lazily and `model.export(...)` is executed.
@@ -109,7 +109,7 @@ Export command (`yolo-ex export ...`):
 Platform diagnostics (`yolo-ex-platform`):
 
 1. CLI runs `check_current_platform()`.
-2. Platform target is detected (`macos`, `linux_arm64`, or `other`).
+2. Platform target is detected (`jetson` or `other`).
 3. Package/version/import checks are executed for the relevant target.
 4. A text report is rendered and printed.
 5. Exit code reflects unsupported/failed/ok status.
@@ -138,4 +138,4 @@ Platform diagnostics (`yolo-ex-platform`):
 - [ ] `src/yolo_ex/platform_check.py` duplicates expected version constants that also exist in `pyproject.toml` dependency groups, creating drift risk.
 - [ ] `tests/` focuses on unit tests/mocking; no integration test verifies a real Ultralytics export or actual platform package imports.
 - [ ] `models/` contains large binary model/export artifacts committed to the repo, which increases clone size and churn.
-- [ ] Platform support is intentionally narrow (macOS + Linux arm64/Jetson); unsupported targets return diagnostics but may surprise users expecting broader compatibility.
+- [ ] Platform support is intentionally narrow (Jetson/Linux arm64 only); unsupported targets return diagnostics but may surprise users expecting broader compatibility.

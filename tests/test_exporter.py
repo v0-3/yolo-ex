@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
 from types import ModuleType
 
@@ -19,7 +18,7 @@ def _pt_file(tmp_path: Path) -> Path:
 
 
 def test_validate_request_rejects_missing_file(tmp_path: Path) -> None:
-    request = ExportRequest(model_path=tmp_path / "missing.pt", format=ExportFormat.COREML)
+    request = ExportRequest(model_path=tmp_path / "missing.pt", format=ExportFormat.ENGINE)
     with pytest.raises(ExportValidationError, match="not found"):
         validate_request(request)
 
@@ -27,19 +26,19 @@ def test_validate_request_rejects_missing_file(tmp_path: Path) -> None:
 def test_validate_request_rejects_non_pt(tmp_path: Path) -> None:
     path = tmp_path / "model.onnx"
     path.touch()
-    request = ExportRequest(model_path=path, format=ExportFormat.COREML)
+    request = ExportRequest(model_path=path, format=ExportFormat.ENGINE)
     with pytest.raises(ExportValidationError, match=".pt"):
         validate_request(request)
 
 
-def test_validate_request_rejects_workspace_for_coreml(tmp_path: Path) -> None:
+def test_validate_request_accepts_workspace_for_engine(tmp_path: Path) -> None:
     request = ExportRequest(
         model_path=_pt_file(tmp_path),
-        format=ExportFormat.COREML,
+        format=ExportFormat.ENGINE,
         workspace=4.0,
     )
-    with pytest.raises(ExportValidationError, match="only valid"):
-        validate_request(request)
+
+    validate_request(request)
 
 
 def test_build_export_kwargs_for_engine(tmp_path: Path) -> None:
@@ -69,12 +68,10 @@ def test_build_export_kwargs_for_engine(tmp_path: Path) -> None:
     assert kwargs["name"] == "model"
 
 
-def test_build_export_kwargs_for_coreml_omits_engine_only_fields(tmp_path: Path) -> None:
+def test_build_export_kwargs_omits_optional_engine_fields_when_unset(tmp_path: Path) -> None:
     request = ExportRequest(
         model_path=_pt_file(tmp_path),
-        format=ExportFormat.COREML,
-        device="0",
-        batch=2,
+        format=ExportFormat.ENGINE,
     )
 
     kwargs = build_export_kwargs(request)
@@ -85,7 +82,7 @@ def test_build_export_kwargs_for_coreml_omits_engine_only_fields(tmp_path: Path)
 
 
 def test_export_model_dry_run_skips_yolo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    request = ExportRequest(model_path=_pt_file(tmp_path), format=ExportFormat.COREML, dry_run=True)
+    request = ExportRequest(model_path=_pt_file(tmp_path), format=ExportFormat.ENGINE, dry_run=True)
 
     def fail_load() -> None:
         raise AssertionError("YOLO should not be loaded during dry run")
@@ -97,13 +94,24 @@ def test_export_model_dry_run_skips_yolo(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert result.details["dry_run"] == "true"
 
 
+def test_export_model_dry_run_skips_tensorrt_compat(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    request = ExportRequest(model_path=_pt_file(tmp_path), format=ExportFormat.ENGINE, dry_run=True)
+
+    def fail_compat() -> None:
+        raise AssertionError("TensorRT compat shim should not run during dry run")
+
+    monkeypatch.setattr(exporter, "_ensure_tensorrt_module_compat", fail_compat)
+
+    result = export_model(request)
+
+    assert result.output_path is None
+
+
 def test_export_model_wraps_backend_exception(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    class FakeModel:
-        def export(self, **kwargs: object) -> str:
-            raise RuntimeError("backend blew up")
-
     class FakeYolo:
         def __init__(self, model_path: str) -> None:
             self.model_path = model_path
@@ -158,28 +166,6 @@ def test_export_model_engine_calls_tensorrt_compat(
     export_model(request)
 
     assert called is True
-
-
-def test_export_model_coreml_skips_tensorrt_compat(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    class FakeYolo:
-        def __init__(self, model_path: str) -> None:
-            self.model_path = model_path
-
-        def export(self, **kwargs: object) -> str:
-            return str(tmp_path / "model.mlpackage")
-
-    def fail_compat() -> None:
-        raise AssertionError("TensorRT compat shim should not run for CoreML exports")
-
-    monkeypatch.setattr(exporter, "_ensure_tensorrt_module_compat", fail_compat)
-    monkeypatch.setattr(exporter, "_load_yolo_class", lambda: FakeYolo)
-
-    request = ExportRequest(model_path=_pt_file(tmp_path), format=ExportFormat.COREML)
-    result = export_model(request)
-
-    assert result.output_path == tmp_path / "model.mlpackage"
 
 
 def test_ensure_tensorrt_module_compat_aliases_tensorrt_bindings(

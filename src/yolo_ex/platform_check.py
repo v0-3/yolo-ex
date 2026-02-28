@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import importlib
-import logging
 import platform as py_platform
-import warnings
 from dataclasses import dataclass, field
 from enum import Enum
 from importlib import metadata as importlib_metadata
@@ -13,9 +11,6 @@ from importlib import metadata as importlib_metadata
 from yolo_ex.platforms import PlatformTarget, detect_platform
 
 ULTRALYTICS_VERSION = "8.4.14"
-MACOS_TORCH_VERSION = "2.7.0"
-MACOS_TORCHVISION_VERSION = "0.22.0"
-MACOS_COREMLTOOLS_VERSION = "9.0"
 JETSON_TORCH_VERSION = "2.5.0a0+872d972e41.nv24.08"
 JETSON_TORCHVISION_VERSION = "0.20.0a0+afc54f7"
 JETSON_ONNXRUNTIME_GPU_VERSION = "1.23.0"
@@ -64,8 +59,8 @@ def check_current_platform() -> PlatformCheckReport:
 
     if target is PlatformTarget.OTHER:
         warnings.append(
-            "Unsupported platform for yolo-ex exports. Supported targets are macOS and Linux arm64 "
-            "(Jetson Orin Nano)."
+            "Unsupported platform for yolo-ex exports. Supported target is Jetson "
+            "(Linux arm64)."
         )
         return PlatformCheckReport(
             platform_target=target,
@@ -76,57 +71,28 @@ def check_current_platform() -> PlatformCheckReport:
         )
 
     checks: list[PackageCheck] = [
-        _check_exact_version("ultralytics", "ultralytics", ULTRALYTICS_VERSION)
+        _check_exact_version("ultralytics", "ultralytics", ULTRALYTICS_VERSION),
+        _check_presence_and_import_with_validated_version(
+            "torch",
+            "torch",
+            "torch",
+            JETSON_TORCH_VERSION,
+        ),
+        _check_presence_and_import_with_validated_version(
+            "torchvision",
+            "torchvision",
+            "torchvision",
+            JETSON_TORCHVISION_VERSION,
+        ),
+        _check_presence_and_import_with_validated_version(
+            "onnxruntime",
+            "onnxruntime-gpu",
+            "onnxruntime",
+            JETSON_ONNXRUNTIME_GPU_VERSION,
+        ),
+        _check_jetson_tensorrt_distribution(),
+        _check_import_only("TensorRT Python import", "tensorrt"),
     ]
-
-    if target is PlatformTarget.MACOS:
-        checks.extend(
-            [
-                _check_presence_and_import_with_validated_version(
-                    "torch",
-                    "torch",
-                    "torch",
-                    MACOS_TORCH_VERSION,
-                ),
-                _check_presence_and_import_with_validated_version(
-                    "torchvision",
-                    "torchvision",
-                    "torchvision",
-                    MACOS_TORCHVISION_VERSION,
-                ),
-                _check_presence_and_import_with_validated_version(
-                    "coremltools",
-                    "coremltools",
-                    "coremltools",
-                    MACOS_COREMLTOOLS_VERSION,
-                ),
-            ]
-        )
-    elif target is PlatformTarget.LINUX_ARM64:
-        checks.extend(
-            [
-                _check_presence_and_import_with_validated_version(
-                    "torch",
-                    "torch",
-                    "torch",
-                    JETSON_TORCH_VERSION,
-                ),
-                _check_presence_and_import_with_validated_version(
-                    "torchvision",
-                    "torchvision",
-                    "torchvision",
-                    JETSON_TORCHVISION_VERSION,
-                ),
-                _check_presence_and_import_with_validated_version(
-                    "onnxruntime",
-                    "onnxruntime-gpu",
-                    "onnxruntime",
-                    JETSON_ONNXRUNTIME_GPU_VERSION,
-                ),
-                _check_jetson_tensorrt_distribution(),
-                _check_import_only("TensorRT Python import", "tensorrt"),
-            ]
-        )
 
     ok = all(check.status is PackageCheckStatus.OK for check in checks)
     return PlatformCheckReport(
@@ -174,7 +140,7 @@ def render_platform_report(report: PlatformCheckReport) -> str:
     for warning in report.warnings:
         lines.append(f"warning: {warning}")
 
-    if report.platform_target is PlatformTarget.LINUX_ARM64 and not report.ok:
+    if report.platform_target is PlatformTarget.JETSON and not report.ok:
         lines.append(
             "Jetson tip: prefer JetPack/system Python packages, then create the project venv with "
             "`uv venv --python /usr/bin/python3 --system-site-packages` and run `uv sync`."
@@ -197,14 +163,14 @@ def _render_check_display_name(check: PackageCheck) -> str:
 
 def _should_render_check(report: PlatformCheckReport, check: PackageCheck) -> bool:
     return not (
-        report.platform_target is PlatformTarget.LINUX_ARM64 and check.label == "TensorRT Python import"
+        report.platform_target is PlatformTarget.JETSON and check.label == "TensorRT Python import"
     )
 
 
 def _get_hidden_jetson_tensorrt_import_check(
     report: PlatformCheckReport,
 ) -> PackageCheck | None:
-    if report.platform_target is not PlatformTarget.LINUX_ARM64:
+    if report.platform_target is not PlatformTarget.JETSON:
         return None
     for check in report.checks:
         if check.label == "TensorRT Python import":
@@ -336,24 +302,7 @@ def _check_presence_and_import_with_validated_version(
 
 
 def _import_checked_module(import_name: str) -> None:
-    if import_name != "coremltools":
-        importlib.import_module(import_name)
-        return
-
-    # coremltools emits a compatibility warning for unsupported torch versions on import.
-    # The platform checker reports version mismatches explicitly, so suppress that noise here.
-    logger = logging.getLogger("coremltools")
-    previous_disabled = logger.disabled
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=r"Torch version .* has not been tested with coremltools.*",
-        )
-        try:
-            logger.disabled = True
-            importlib.import_module(import_name)
-        finally:
-            logger.disabled = previous_disabled
+    importlib.import_module(import_name)
 
 
 def _check_import_only(label: str, import_name: str) -> PackageCheck:

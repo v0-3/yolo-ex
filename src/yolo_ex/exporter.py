@@ -60,8 +60,6 @@ def validate_request(request: ExportRequest) -> None:
         raise ExportValidationError("--batch must be greater than zero.")
     if request.workspace is not None and request.workspace <= 0:
         raise ExportValidationError("--workspace must be greater than zero.")
-    if request.format is ExportFormat.COREML and request.workspace is not None:
-        raise ExportValidationError("--workspace is only valid with --format engine.")
 
 
 def build_export_kwargs(request: ExportRequest) -> dict[str, Any]:
@@ -77,16 +75,12 @@ def build_export_kwargs(request: ExportRequest) -> dict[str, Any]:
         kwargs["project"] = str(request.output_dir)
         kwargs["name"] = request.model_path.stem
 
-    if request.format is ExportFormat.ENGINE:
-        if request.device is not None:
-            kwargs["device"] = request.device
-        if request.batch is not None:
-            kwargs["batch"] = request.batch
-        if request.workspace is not None:
-            kwargs["workspace"] = request.workspace
-    elif request.format is ExportFormat.COREML:
-        # CoreML export in this tool intentionally omits device/batch/workspace.
-        pass
+    if request.device is not None:
+        kwargs["device"] = request.device
+    if request.batch is not None:
+        kwargs["batch"] = request.batch
+    if request.workspace is not None:
+        kwargs["workspace"] = request.workspace
 
     return kwargs
 
@@ -98,7 +92,7 @@ def _load_yolo_class() -> Any:
 
 
 def _ensure_tensorrt_module_compat() -> None:
-    """Alias ``tensorrt_bindings`` to ``tensorrt`` when Jetson bindings omit the canonical module."""
+    """Alias ``tensorrt_bindings`` to ``tensorrt`` when Jetson omits canonical module."""
     try:
         importlib.import_module("tensorrt")
         return

@@ -10,16 +10,10 @@ from yolo_ex.models import ExportFormat
 from yolo_ex.platforms import PlatformTarget, detect_platform, preflight_for_format
 
 
-def test_detect_platform_macos(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(platforms.py_platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(platforms.py_platform, "machine", lambda: "arm64")
-    assert detect_platform() is PlatformTarget.MACOS
-
-
-def test_detect_platform_linux_arm64(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_detect_platform_jetson(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(platforms.py_platform, "system", lambda: "Linux")
     monkeypatch.setattr(platforms.py_platform, "machine", lambda: "aarch64")
-    assert detect_platform() is PlatformTarget.LINUX_ARM64
+    assert detect_platform() is PlatformTarget.JETSON
 
 
 def test_detect_platform_other(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -28,17 +22,14 @@ def test_detect_platform_other(monkeypatch: pytest.MonkeyPatch) -> None:
     assert detect_platform() is PlatformTarget.OTHER
 
 
-def test_coreml_preflight_missing_dependency_message(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(platforms.py_platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(platforms.py_platform, "machine", lambda: "arm64")
+def test_engine_preflight_rejects_non_jetson(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(platforms.py_platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platforms.py_platform, "machine", lambda: "x86_64")
 
-    def fake_import(name: str) -> SimpleNamespace:
-        raise ModuleNotFoundError(name)
-
-    monkeypatch.setattr(platforms.importlib, "import_module", fake_import)
-
-    with pytest.raises(ExportValidationError, match="coremltools"):
-        preflight_for_format(ExportFormat.COREML)
+    with pytest.raises(ExportValidationError, match="supported only on Jetson"):
+        preflight_for_format(ExportFormat.ENGINE)
 
 
 def test_engine_preflight_missing_dependency_message(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -100,17 +91,5 @@ def test_engine_preflight_requires_jetson_runtime_modules_happy_path(
     monkeypatch.setattr(platforms.importlib, "import_module", lambda name: SimpleNamespace())
 
     result = preflight_for_format(ExportFormat.ENGINE)
-    assert result.target is PlatformTarget.LINUX_ARM64
+    assert result.target is PlatformTarget.JETSON
     assert result.warnings == []
-
-
-def test_engine_preflight_warns_on_non_jetson(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(platforms.py_platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(platforms.py_platform, "machine", lambda: "arm64")
-    monkeypatch.setattr(platforms.importlib, "import_module", lambda name: SimpleNamespace())
-
-    result = preflight_for_format(ExportFormat.ENGINE)
-    assert result.target is PlatformTarget.MACOS
-    assert result.warnings

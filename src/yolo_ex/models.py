@@ -10,7 +10,6 @@ from pathlib import Path
 class ExportFormat(str, Enum):
     """Supported export formats."""
 
-    COREML = "coreml"
     ENGINE = "engine"
 
 

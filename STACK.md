@@ -17,10 +17,6 @@
 | ------- | ------- | ------- |
 | `ultralytics` | `8.4.14` | Primary export backend (`YOLO.export`) |
 | `numpy` | `1.26.4` | Numeric/runtime dependency for ML/export stack |
-| `ultralytics[export]` | `8.4.14` (non-Linux aarch64 only) | Export extras on non-Jetson targets |
-| `coremltools` (group: `mac`) | `9.0` | CoreML export support on macOS |
-| `torch` (group: `mac`) | `2.7.0` | macOS export/runtime dependency |
-| `torchvision` (group: `mac`) | `0.22.0` | macOS export/runtime dependency |
 | `torch` (group: `jetson`) | `2.5.0a0+872d972e41.nv24.08` (wheel URL) | Jetson-specific PyTorch build |
 | `torchvision` (group: `jetson`) | `0.20.0a0+afc54f7` (wheel URL) | Jetson-specific torchvision build |
 | `onnxruntime-gpu` (group: `jetson`) | `1.23.0` (wheel URL) | Jetson TensorRT export dependency |
@@ -41,7 +37,7 @@
 | Local filesystem | Host OS | Input `.pt` model discovery and exported artifact output paths |
 | Python package metadata | stdlib (`importlib.metadata`) | Installed package version checks in diagnostics |
 | Python import system | stdlib (`importlib`) | Optional dependency presence/import validation |
-| Platform detection | stdlib (`platform`) | Runtime target detection (`macos`, `linux_arm64`, `other`) |
+| Platform detection | stdlib (`platform`) | Runtime target detection (`jetson`, `other`) |
 | JetPack / TensorRT Python packages (Jetson) | NVIDIA JetPack + system Python | TensorRT runtime/import support on Linux arm64 |
 | PyPI / wheel URLs (via `uv`) | PyPI + GitHub Releases (Ultralytics assets) | Dependency resolution and Jetson wheel installation sources |
 
